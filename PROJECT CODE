@@ -1,0 +1,125 @@
+from PIL import Image
+import torch
+from diffusers import StableDiffusionPipeline
+from IPython.display import display, HTML
+from webcolors import rgb_to_name as webcolors_rgb_to_name
+
+class CFG:
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    seed = 42
+    generator = torch.Generator(device).manual_seed(seed)
+    image_gen_steps = 35
+    image_gen_model_id = "stabilityai/stable-diffusion-2"
+    image_gen_size = (400, 400)
+    image_gen_guidance_scale = 9
+    prompt_gen_model_id = "gpt2"
+    prompt_dataset_size = 6
+    prompt_max_length = 12
+
+image_gen_model = StableDiffusionPipeline.from_pretrained(
+    CFG.image_gen_model_id, torch_dtype=torch.float32,
+    revision="fp16", use_auth_token='your_hugging_face_auth_token', guidance_scale=CFG.image_gen_guidance_scale
+)
+image_gen_model = image_gen_model.to(CFG.device)
+
+def generate_images(prompt):
+    try:
+        images_with_links = []
+        for i in range(5):  # Generate 10 images based on the entered prompt
+            image = image_gen_model(
+                prompt, num_inference_steps=CFG.image_gen_steps,
+                generator=CFG.generator,
+                guidance_scale=CFG.image_gen_guidance_scale
+            ).images[0]
+            image = image.resize(CFG.image_gen_size)
+            img_name = f"generated_image_{i}.png"
+            image.save(img_name)  # Save the generated image
+            images_with_links.append((image, img_name))  # Append tuple of image and its file name
+        return images_with_links
+    except Exception as e:
+        print(f"Error during image generation: {e}")
+        return []
+
+def detect_colors(image_path):
+    try:
+        image = Image.open(image_path)
+        # Convert image to RGB mode
+        image = image.convert("RGB")
+        # Resize image for faster processing
+        image = image.resize((100, 100))
+        # Get colors using K-means clustering
+        colors = image.getcolors(10000)  # Increase the parameter if needed
+        sorted_colors = sorted(colors, key=lambda x: -x[0])  # Sort colors by frequency
+        # Get the dominant colors
+        dominant_colors = [color[1] for color in sorted_colors[:3]] 
+        for i in range(len(dominant_colors)):
+          if dominant_colors[i]=="Unknown":
+            dominant_colors[i]="Black"
+        return dominant_colors
+    except Exception as e:
+        print(f"Error detecting colors: {e}")
+        return []
+
+def rgb_to_name(rgb_tuple):
+    try:
+        color_name = webcolors_rgb_to_name(rgb_tuple)
+        return color_name
+    except ValueError:
+        return "Unknown"
+
+def parse_prompt(prompt):
+    # Split the prompt into individual words
+    keywords = prompt.lower().split()
+    # Extract relevant keywords
+    relevant_keywords = [keyword for keyword in keywords if keyword not in ['a', 'an', 'the', 'to', 'for', 'in', 'on', 'at', 'of', 'with', 'about', 'from', 'by']]
+    return relevant_keywords
+
+def construct_flipkart_link(keywords):
+    # Construct Flipkart search query based on keywords
+    query = '%20'.join(keywords)
+    flipkart_link = f"<a href='https://www.flipkart.com/search?q={query}' target='_blank'>Flipkart</a>"
+    return flipkart_link
+
+def construct_amazon_link(keywords):
+    # Construct Amazon search query based on keywords
+    query = '+'.join(keywords)
+    amazon_link = f"<a href='https://www.amazon.in/s?k={query}' target='_blank'>Amazon</a>"
+    return amazon_link
+
+def construct_meesho_link(keywords):
+    # Construct Meesho search query based on keywords
+    query = '+'.join(keywords)
+    meesho_link = f"<a href='https://meesho.com/search?q={query}' target='_blank'>Meesho</a>"
+    return meesho_link
+
+def construct_ajio_link(keywords):
+    # Construct Ajio search query based on keywords
+    query = '+'.join(keywords)
+    ajio_link = f"<a href='https://www.ajio.com/search/?text={query}' target='_blank'>Ajio</a>"
+    return ajio_link
+
+# Get input from the user
+prompt = input("Enter your prompt: ")
+
+# Generate images based on the input prompt
+generated_images = generate_images(prompt)
+
+# Display the generated images with links to buy similar dresses online
+if generated_images:
+    for i, (img, img_name) in enumerate(generated_images):
+        display(img)  # Display the image
+        # Detect colors in the image
+        colors = detect_colors(img_name)
+        # Convert RGB colors to color names
+        color_names = [rgb_to_name(color) for color in colors]
+        # Parse the prompt and extract relevant keywords
+        keywords = parse_prompt(prompt)
+        # Construct links for different platforms based on keywords
+        flipkart_link = construct_flipkart_link(keywords)
+        amazon_link = construct_amazon_link(keywords)
+        meesho_link = construct_meesho_link(keywords)
+        ajio_link = construct_ajio_link(keywords)
+        # Display the links
+        display(HTML(f"<p>{flipkart_link} | {amazon_link} | {meesho_link} | {ajio_link}</p>"))
+else:
+    print("No images were generated due to an error.")
